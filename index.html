@@ -1,0 +1,238 @@
+<!doctype html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Monitoring Nilai Siswa</title>
+  <link rel="manifest" href="manifest.json">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      background: #f0f2f5;
+      margin: 0;
+      padding: 20px;
+    }
+    h1 {
+      text-align: center;
+      color: #333;
+    }
+    .container {
+      max-width: 900px;
+      margin: auto;
+      background: white;
+      padding: 20px;
+      border-radius: 10px;
+      box-shadow: 0 0 10px rgba(0,0,0,0.1);
+    }
+    input, button {
+      padding: 10px;
+      margin: 5px 0;
+      width: 100%;
+      border-radius: 5px;
+      border: 1px solid #ccc;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 20px;
+    }
+    th, td {
+      padding: 10px;
+      border: 1px solid #ddd;
+      text-align: left;
+    }
+    th {
+      background: #007bff;
+      color: white;
+    }
+    #search {
+      margin-top: 10px;
+      margin-bottom: 10px;
+    }
+    #grafikContainer {
+      margin-top: 30px;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>Aplikasi Monitoring Nilai Siswa</h1>
+
+    <!-- Form Login -->
+    <form id="loginForm">
+      <input type="email" id="email" placeholder="Email" required>
+      <input type="password" id="password" placeholder="Password" required>
+      <button type="submit">Login</button>
+    </form>
+
+    <!-- Aplikasi Utama -->
+    <div id="mainApp" style="display:none;">
+      <button onclick="logout()">Logout</button>
+      <input type="text" id="search" placeholder="Cari nama siswa..." onkeyup="searchStudent()">
+      <form id="formNilai">
+        <input type="text" id="nama" placeholder="Nama Siswa" required>
+        <input type="number" id="nilai" placeholder="Nilai" min="0" max="100" required>
+        <button type="submit">Tambah Nilai</button>
+      </form>
+      <button onclick="exportCSV()">Export ke CSV</button>
+      <table id="tabelNilai">
+        <thead>
+          <tr>
+            <th>No</th>
+            <th>Nama</th>
+            <th>Nilai</th>
+          </tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+      <div id="grafikContainer">
+        <canvas id="grafikNilai" height="100"></canvas>
+      </div>
+    </div>
+  </div>
+
+  <!-- Firebase Module -->
+<script type="module">
+  import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
+  import { getAuth, signInWithEmailAndPassword, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
+  import { getFirestore, collection, addDoc, getDocs } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
+
+  const firebaseConfig = {
+    apiKey: "AIzaSyAFu4scYl9S2_1xKnk3wm8CShZ5K2MXH0c",
+    authDomain: "monitoringnilaiapp.firebaseapp.com",
+    projectId: "monitoringnilaiapp",
+    storageBucket: "monitoringnilaiapp.appspot.com",
+    messagingSenderId: "952237676619",
+    appId: "1:952237676619:web:b837b5df9c24b5a47a15ce",
+    measurementId: "G-3LG938G4FN"
+  };
+
+  const app = initializeApp(firebaseConfig);
+  const auth = getAuth(app);
+  const db = getFirestore(app);
+
+  const loginForm = document.getElementById('loginForm');
+  const mainApp = document.getElementById('mainApp');
+  const formNilai = document.getElementById('formNilai');
+  const tabel = document.querySelector('#tabelNilai tbody');
+  let dataSiswa = [];
+
+  // LOGIN
+  loginForm.addEventListener('submit', e => {
+    e.preventDefault();
+    const email = document.getElementById('email').value;
+    const password = document.getElementById('password').value;
+    signInWithEmailAndPassword(auth, email, password)
+      .then(() => {
+        console.log("Login sukses!");
+        loginForm.style.display = 'none';
+        mainApp.style.display = 'block';
+        loadData();
+      })
+      .catch(err => alert('Login gagal: ' + err.message));
+  });
+
+  // STATUS LOGIN
+  onAuthStateChanged(auth, user => {
+    if (user) {
+      loginForm.style.display = 'none';
+      mainApp.style.display = 'block';
+      loadData();
+    } else {
+      loginForm.style.display = 'block';
+      mainApp.style.display = 'none';
+    }
+  });
+
+  // LOGOUT
+  window.logout = () => signOut(auth);
+
+  // TAMBAH NILAI
+  formNilai.addEventListener('submit', async e => {
+    e.preventDefault();
+    const nama = document.getElementById('nama').value.trim();
+    const nilai = parseInt(document.getElementById('nilai').value);
+    if (nama && !isNaN(nilai)) {
+      await addDoc(collection(db, "nilai"), { nama, nilai });
+      formNilai.reset();
+      loadData();
+    }
+  });
+
+  // LOAD DATA NILAI
+  async function loadData() {
+    try {
+      const querySnapshot = await getDocs(collection(db, "nilai"));
+      dataSiswa = [];
+      querySnapshot.forEach(doc => dataSiswa.push(doc.data()));
+      tampilkanData();
+    } catch (err) {
+      console.error("Gagal load data:", err);
+      alert("Gagal mengambil data nilai dari database.");
+    }
+  }
+
+  function tampilkanData() {
+    tabel.innerHTML = '';
+    dataSiswa.forEach((siswa, index) => {
+      const row = `<tr>
+        <td>${index + 1}</td>
+        <td>${siswa.nama}</td>
+        <td>${siswa.nilai}</td>
+      </tr>`;
+      tabel.innerHTML += row;
+    });
+    updateChart();
+  }
+
+  function searchStudent() {
+    const keyword = document.getElementById('search').value.toLowerCase();
+    const rows = tabel.querySelectorAll('tr');
+    rows.forEach(row => {
+      const nama = row.cells[1]?.textContent.toLowerCase() || '';
+      row.style.display = nama.includes(keyword) ? '' : 'none';
+    });
+  }
+
+  function exportCSV() {
+    let csv = "No,Nama,Nilai\n";
+    dataSiswa.forEach((siswa, index) => {
+      csv += `${index+1},${siswa.nama},${siswa.nilai}\n`;
+    });
+    const blob = new Blob([csv], { type: 'text/csv' });
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(blob);
+    link.download = 'data_nilai.csv';
+    link.click();
+  }
+
+  let chart;
+  function updateChart() {
+    const ctx = document.getElementById('grafikNilai').getContext('2d');
+    if (chart) chart.destroy();
+    chart = new Chart(ctx, {
+      type: 'bar',
+      data: {
+        labels: dataSiswa.map(s => s.nama),
+        datasets: [{
+          label: 'Nilai',
+          data: dataSiswa.map(s => s.nilai),
+          backgroundColor: 'rgba(54, 162, 235, 0.5)',
+          borderColor: 'rgba(54, 162, 235, 1)',
+          borderWidth: 1
+        }]
+      },
+      options: {
+        scales: {
+          y: {
+            beginAtZero: true,
+            max: 100
+          }
+        }
+      }
+    });
+  }
+</script>
+</body>
+</html>
